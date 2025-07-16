@@ -49,3 +49,53 @@ if st.button("🔮 Predict Claim Likelihood"):
         st.error(f"⚠️ This policyholder is LIKELY to claim. (Probability: {probability:.2f})")
     else:
         st.success(f"✅ This policyholder is UNLIKELY to claim. (Probability: {probability:.2f})")
+
+import streamlit as st
+import pandas as pd
+import joblib
+
+# Load the model
+model = joblib.load("rf_model.pkl")
+
+st.title("Insurance Claim Prediction")
+
+# --- Single prediction (existing) ---
+st.subheader("🔹 Predict for a Single Client")
+# (keep your existing single-input form here...)
+
+st.write("---")
+
+# --- Batch prediction ---
+st.subheader("🔹 Batch Prediction for Multiple Clients")
+
+uploaded_file = st.file_uploader("Upload a CSV file with client data", type=["csv"])
+
+if uploaded_file is not None:
+    # Read uploaded CSV
+    batch_data = pd.read_csv(uploaded_file)
+    
+    st.write("✅ Uploaded data preview:")
+    st.write(batch_data.head())
+    
+    # Ensure the columns match the model
+    # (Adjust this list to your actual feature columns)
+    expected_cols = ["age", "vehicle_age", "annual_premium", "num_policies", "vehicle_type"]
+    
+    # Check for missing columns
+    missing_cols = [col for col in expected_cols if col not in batch_data.columns]
+    if missing_cols:
+        st.error(f"Missing columns: {missing_cols}")
+    else:
+        # Make predictions
+        predictions = model.predict(batch_data[expected_cols])
+        
+        # Add predictions as new column
+        batch_data["Claim_Prediction"] = predictions
+        
+        # Show results
+        st.write("### 📊 Predictions")
+        st.write(batch_data.head())
+        
+        # Allow download
+        csv_output = batch_data.to_csv(index=False).encode('utf-8')
+        st.download_button("⬇️ Download Predictions", data=csv_output, file_name="predictions.csv", mime="text/csv")
