@@ -54,18 +54,11 @@ import streamlit as st
 import pandas as pd
 import joblib
 
-# Load the model
+# Load trained model & expected columns
 model = joblib.load("rf_model.pkl")
+expected_cols = joblib.load("model_columns.pkl")  # same order as training
+encoder = joblib.load("vehicle_encoder.pkl")  # label encoder for vehicle_type
 
-st.title("Insurance Claim Prediction")
-
-# --- Single prediction (existing) ---
-st.subheader("🔹 Predict for a Single Client")
-# (keep your existing single-input form here...)
-
-st.write("---")
-
-# --- Batch prediction ---
 st.subheader("🔹 Batch Prediction for Multiple Clients")
 
 uploaded_file = st.file_uploader("Upload a CSV file with client data", type=["csv"])
@@ -73,29 +66,40 @@ uploaded_file = st.file_uploader("Upload a CSV file with client data", type=["cs
 if uploaded_file is not None:
     # Read uploaded CSV
     batch_data = pd.read_csv(uploaded_file)
-    
     st.write("✅ Uploaded data preview:")
     st.write(batch_data.head())
     
-    # Ensure the columns match the model
-    # (Adjust this list to your actual feature columns)
-    expected_cols = ["age", "vehicle_age", "annual_premium", "num_policies", "vehicle_type"]
-    
-    # Check for missing columns
+    # --- STEP 1: Check for missing columns ---
     missing_cols = [col for col in expected_cols if col not in batch_data.columns]
+    extra_cols = [col for col in batch_data.columns if col not in expected_cols]
+    
     if missing_cols:
-        st.error(f"Missing columns: {missing_cols}")
+        st.error(f"❌ Missing required columns: {missing_cols}")
     else:
-        # Make predictions
-        predictions = model.predict(batch_data[expected_cols])
+        # Drop any extra columns that model doesn't need
+        if extra_cols:
+            st.warning(f"⚠️ Extra columns detected: {extra_cols} (they will be ignored)")
+            batch_data = batch_data[expected_cols]
         
-        # Add predictions as new column
+        # --- STEP 2: Ensure correct column order ---
+        batch_data = batch_data[expected_cols]
+        
+        # --- STEP 3: Encode categorical columns like training ---
+        if "vehicle_type" in batch_data.columns:
+            try:
+                batch_data["vehicle_type"] = encoder.transform(batch_data["vehicle_type"])
+            except ValueError as e:
+                st.error("❌ Unknown categories in 'vehicle_type'. Please ensure values match training data.")
+                st.stop()
+        
+        # --- STEP 4: Predict ---
+        predictions = model.predict(batch_data)
         batch_data["Claim_Prediction"] = predictions
         
-        # Show results
+        # Show prediction results
         st.write("### 📊 Predictions")
         st.write(batch_data.head())
         
-        # Allow download
+        # --- STEP 5: Allow CSV download ---
         csv_output = batch_data.to_csv(index=False).encode('utf-8')
         st.download_button("⬇️ Download Predictions", data=csv_output, file_name="predictions.csv", mime="text/csv")
